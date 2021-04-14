@@ -1,3 +1,6 @@
 [submodule "ros2_shared"]
 	path = ros2_shared
 	url = https://github.com/ptrmu/ros2_shared
+[submodule "TelloPy"]
+	path = TelloPy
+	url = https://github.com/hanyazou/TelloPy
