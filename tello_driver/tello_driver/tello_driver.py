@@ -1,5 +1,6 @@
 import os, sys
 import time
+import threading
 
 import tellopy
 import av
@@ -39,14 +40,51 @@ class TelloDriver(Node):
                                                     self.cmd_vel_callback,
                                                     qos_profile_sensor_data)
         self.bridge = CvBridge()
-        self._image_pub = self.create_publisher(Image, "image_raw", 1)
-        self._imu_pub = self.create_publisher(Imu, "imu", 1)
+        self._image_pub = self.create_publisher(Image, "image_raw", 10)
+        self._imu_pub = self.create_publisher(Imu, "imu", 10)
         self._odom_pub = self.create_publisher(Odometry, "odom", 1)
         self._state_pub = self.create_publisher(TelloState, "tello/state", 1)
         self._action_srv = self.create_service(TelloAction, 'tello/action', self.action_callback)
 
+        self.frame_thread = threading.Thread(target=self.framegrabber_loop)
+        self.frame_thread.start()
+
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
+    
+    def framegrabber_loop(self):
+        for frame in self.container.decode(video=0):
+            if 0 < self.frame_skip:
+                self.frame_skip = self.frame_skip - 1
+                continue
+            image = self.bridge.cv2_to_imgmsg(np.array(frame.to_image()), "bgr8")
+            self._image_pub.publish(image)
+
+        # import av #Import here as 'hack' to prevent troublesome install of PyAV when not used
+        # # Repeatedly try to connect
+        # vs = self.drone.get_video_stream()
+        # while self.drone.state != self.drone.STATE_QUIT:
+        #     try:
+        #         container = av.open(vs)
+        #         break
+        #     except BaseException as err:
+        #         print('fgrab: pyav stream failed - %s' % str(err))
+        #         time.sleep(1.0)
+
+        # # Once connected, process frames till drone/stream closes
+        # while self.drone.state != self.drone.STATE_QUIT:
+        #     # vs blocks, dies on self.stop
+        #     for frame in container.decode(video=0):
+        #         img = np.array(frame.to_image())
+        #         img_msg = self.bridge.cv2_to_imgmsg(img, 'rgb8')
+        #         # try:
+        #         #     img_msg = self.bridge.cv2_to_imgmsg(img, 'rgb8')
+        #         #     img_msg.header.frame_id = self.caminfo.header.frame_id
+        #         # except CvBridgeError as err:
+        #         #     rospy.logerr('fgrab: cv bridge failed - %s' % str(err))
+        #         #     continue
+        #         self.pub_image_raw.publish(img_msg)
+        #         # self.pub_caminfo.publish(self.caminfo)  
        
     def flight_data_handler(self, event, sender, data, **args):
         current_time = self.get_clock().now().to_msg()
@@ -138,13 +176,13 @@ class TelloDriver(Node):
         pass
         # self.get_image_stream()
 
-    def get_image_stream(self):
-        for frame in self.container.decode(video=0):
-            if 0 < self.frame_skip:
-                self.frame_skip = self.frame_skip - 1
-                continue
-            image = self.bridge.cv2_to_imgmsg(np.array(frame.to_image()), "bgr8")
-            self._image_pub.publish(image)
+    # def get_image_stream(self):
+    #     for frame in self.container.decode(video=0):
+    #         if 0 < self.frame_skip:
+    #             self.frame_skip = self.frame_skip - 1
+    #             continue
+    #         image = self.bridge.cv2_to_imgmsg(np.array(frame.to_image()), "bgr8")
+    #         self._image_pub.publish(image)
 
     def on_destroy(self):
         self.drone.quit()
